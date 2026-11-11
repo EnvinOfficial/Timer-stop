@@ -197,8 +197,12 @@ body.focus #focus{display:flex}
 .fdigits.xl{font-size:min(16.5vw,58vh)}
 .fcap,.fstate,.fback{font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);min-height:18px}
 .fstate{color:var(--text)}
-.fback{display:none}
-body.focus .fback{display:block}
+.fback{opacity:.75}
+#focus{cursor:pointer}
+.fx{position:absolute;top:max(14px,env(safe-area-inset-top));right:max(14px,env(safe-area-inset-right));display:none;
+  width:44px;height:44px;border-radius:50%;background:var(--raised);color:var(--text);font:600 22px/1 var(--display);
+  align-items:center;justify-content:center;z-index:1}
+body.focus .fx{display:flex}
 @media (orientation:portrait){
   .fz{transform:rotate(90deg)}
   .fdigits{font-size:min(22vh,50vw)}
@@ -321,8 +325,9 @@ body.focus .fback{display:block}
     <span class="fcap" id="fCap">Time left</span>
     <span class="fdigits num" id="fDigits">5:00:00</span>
     <span class="fstate" id="fState"></span>
-    <span class="fback">Tap to go back</span>
+    <span class="fback" id="fHint">Tap to pause</span>
   </div>
+  <button class="fx" id="fClose" aria-label="Close">✕</button>
 </div>
 
 <div class="veil" id="adjVeil">
@@ -800,6 +805,7 @@ function renderTimer(){
   setText($('#fCap'),cap);
   setText($('#stateTxt'),run?'Running':'Paused');
   setText($('#fState'),run?'':'Paused');
+  setText($('#fHint'),run?'Tap to pause':'Tap to resume');
   $('#arc').style.strokeDasharray=RING;
   $('#arc').style.strokeDashoffset=over?0:RING*(1-rem/d.goal);
   setText($('#tWorked'),hm(w,'floor'));
@@ -1008,7 +1014,18 @@ $('#finish').addEventListener('click',()=>{
       ()=>{finishJob(id);render();window.scrollTo(0,0)});
 });
 $('#ring').addEventListener('click',()=>document.body.classList.add('focus'));
-$('#focus').addEventListener('click',()=>{if(document.body.classList.contains('focus'))play('close');document.body.classList.remove('focus')});
+let focusTapAt=0;
+$('#focus').addEventListener('click',e=>{
+  if(e.target.closest('#fClose'))return;
+  if(!cur||modeOf(cur)!=='timer')return;
+  const now=Date.now();
+  if(now-focusTapAt<400)return;            // ignore an accidental double tap
+  focusTapAt=now;
+  if(S.p[cur].run){play('pause');pauseJob(cur);save();syncWake()}
+  else{play('start');startJob(cur)}
+  render();
+});
+$('#fClose').addEventListener('click',()=>document.body.classList.remove('focus'));
 
 $('#rAdjust').addEventListener('click',()=>openAdjust(cur,sessionKey(cur)));
 $('#rDelete').addEventListener('click',()=>{

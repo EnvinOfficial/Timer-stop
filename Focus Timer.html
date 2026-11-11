@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Focus Timer</title>
+<style>
+:root{
+  /* Layout: one column, 520px max. Home is two full-colour job cards.
+     A job screen is the countdown ring (the one loud thing), two number tiles,
+     three buttons, then the week as a quiet list. Dark only, by choice. */
+  color-scheme:dark;
+  --bg:#0a0b0d;
+  --surface:#15171b;
+  --raised:#21242b;
+  --line:#2a2e36;
+  --text:#f4f5f7;
+  --muted:#959ba7;
+  --blue:#2468ee;      /* Envin */
+  --blue-ink:#6aa3ff;
+  --yellow:#f5c518;    /* The Royalty Family */
+  --ok:#35d07f;        /* on time, goal reached */
+  --bad:#ff6b63;       /* unfinished */
+  --extra:#a99bff;     /* overtime */
+  --acc:var(--blue);
+  --acc-ink:var(--blue-ink);
+  --on-acc:#fff;
+  --display:ui-rounded,"SF Pro Rounded",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --body:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+body.royalty{--acc:var(--yellow);--acc-ink:var(--yellow);--on-acc:#1b1500}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:16px/1.35 var(--body);-webkit-text-size-adjust:100%;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation;overscroll-behavior:none}
+h1,h2,p{margin:0}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;margin:0;cursor:pointer;touch-action:manipulation}
+button:disabled{cursor:default}
+button:focus-visible{outline:3px solid var(--acc-ink);outline-offset:2px}
+[hidden]{display:none!important}
+.num{font-variant-numeric:tabular-nums}
+.lbl{display:block;font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.hint{text-align:center;color:var(--muted);font-size:13px}
+
+.screen{display:none;flex-direction:column;gap:14px;max-width:520px;min-height:100%;margin:0 auto;padding:16px 16px 36px}
+.screen.on{display:flex}
+
+/* ---------- home: the two jobs ---------- */
+.job{flex:1 1 0;min-height:190px;display:flex;flex-direction:column;justify-content:flex-end;gap:16px;position:relative;
+  text-align:left;border-radius:28px;padding:22px;transition:transform .12s,opacity .2s}
+.job:active{transform:scale(.985)}
+.job.envin{background:var(--blue);color:#fff}
+.job.royalty{background:var(--yellow);color:#1b1500}
+.job .lbl{color:inherit}
+.jn{font:800 34px/1.05 var(--display);letter-spacing:-.02em;text-wrap:balance}
+.jstats{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding-top:14px;border-top:2px solid rgb(0 0 0 / .16)}
+.jcol{display:flex;flex-direction:column;min-width:0}
+.jv{font:800 28px/1.2 var(--display);letter-spacing:-.01em}
+.jd{font-size:14px;font-weight:600}
+.jpill{display:flex;align-items:center;gap:9px;width:100%;padding:10px 14px;border-radius:14px;background:rgb(0 0 0 / .22);font-size:15px;font-weight:700}
+.jpill i{flex:none;width:10px;height:10px;border-radius:50%;background:currentColor;box-shadow:0 0 0 2px rgb(255 255 255 / .35)}
+.jpill.short i{background:var(--bad)} .jpill.ok i{background:var(--ok)} .jpill.over i{background:var(--extra)}
+.jpill.left i{background:currentColor;opacity:.6;box-shadow:none}
+.live{position:absolute;top:18px;right:18px;display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:99px;
+  background:rgb(0 0 0 / .22);font-size:13px;font-weight:700}
+.live i,.state i{width:8px;height:8px;border-radius:50%;background:currentColor}
+.live i{animation:pulse 1.6s ease-in-out infinite}
+body.loading .job{opacity:.5;pointer-events:none}
+
+/* ---------- job screen ---------- */
+.top{display:grid;grid-template-columns:84px 1fr 84px;align-items:center;min-height:44px}
+.back{justify-self:start;min-height:44px;padding:0 14px 0 0;color:var(--acc-ink);font-size:17px;font-weight:600}
+.top h1{text-align:center;font:700 17px/1.2 var(--display)}
+
+.panel{display:flex;flex-direction:column;gap:16px;background:var(--surface);border-radius:26px;padding:22px 18px}
+.q{text-align:center;color:var(--muted);font-size:15px}
+.stepper{display:grid;grid-template-columns:56px 1fr 56px;align-items:center;gap:6px 8px}
+.stepper .lbl{grid-column:1/-1;text-align:center}
+.rb{width:56px;height:56px;border-radius:50%;background:var(--raised);font:600 30px/1 var(--display);
+  display:flex;align-items:center;justify-content:center;touch-action:none}
+.rb:active{background:var(--line)}
+.sv{text-align:center;font:800 34px/1.1 var(--display);letter-spacing:-.01em}
+.stepper.big .sv{font-size:52px}
+.chips{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
+.chip{min-width:52px;height:40px;padding:0 14px;border-radius:99px;background:var(--raised);font-size:15px;font-weight:700}
+.chip.on{background:var(--acc);color:var(--on-acc)}
+
+.play{width:100%;height:64px;border-radius:22px;background:var(--acc);color:var(--on-acc);
+  display:flex;align-items:center;justify-content:center;gap:10px;font:700 18px/1 var(--display)}
+.play svg{width:28px;height:28px;fill:currentColor}
+.play.danger{background:var(--bad);color:#2a0705}
+.btn{height:54px;border-radius:18px;background:var(--raised);font-weight:700;font-size:16px;
+  display:flex;align-items:center;justify-content:center;gap:8px}
+.btn svg{width:20px;height:20px;fill:currentColor}
+.btn.danger,.link.danger{color:var(--bad)}
+.play:active,.btn:active,.chip:active{filter:brightness(.86)}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%}
+.controls .play,.controls .wide{grid-column:1/-1}
+
+/* the countdown */
+.hero{display:flex;flex-direction:column;align-items:center;gap:14px}
+.note{width:100%;background:var(--surface);border-radius:14px;padding:10px 14px;font-size:14px;color:var(--text);text-align:center}
+.ring{--ring:min(70vw,280px);display:block;position:relative;width:var(--ring);height:var(--ring);border-radius:50%}
+.ring svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+.ring circle{fill:none;stroke-width:11}
+.trk{stroke:var(--raised)}
+.arc{stroke:var(--acc-ink);stroke-linecap:round;transition:stroke-dashoffset .3s linear,opacity .25s}
+.center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.cap{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.digits{font:700 calc(var(--ring)*.2)/1 var(--display);letter-spacing:-.02em}
+.digits.long{font-size:calc(var(--ring)*.168)}
+.digits.xl{font-size:calc(var(--ring)*.148)}
+.state{display:inline-flex;align-items:center;gap:7px;font-size:14px;font-weight:700;color:var(--muted)}
+.is-running .state{color:var(--acc-ink)}
+.is-running .state i{animation:pulse 1.6s ease-in-out infinite}
+.is-paused .arc{opacity:.32}
+.is-paused .state{color:var(--text)}
+.is-paused .state i{border-radius:2px}
+.is-paused .digits,.is-paused .fdigits{animation:breathe 1.3s ease-in-out infinite alternate}
+.is-over .arc{stroke:var(--ok)}
+.is-over .digits,.is-over .cap,.is-over .fdigits,.is-over .fcap{color:var(--ok)}
+.is-extra .arc{stroke:var(--extra)}
+.is-extra .digits,.is-extra .cap,.is-extra .fdigits,.is-extra .fcap{color:var(--extra)}
+.flash .digits,.flash .fdigits{animation:flash .45s 6 alternate}
+@keyframes pulse{50%{opacity:.25}}
+@keyframes breathe{to{opacity:.4}}
+@keyframes flash{to{opacity:.1}}
+
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%}
+.tile{background:var(--surface);border-radius:18px;padding:12px 16px}
+.tv{display:block;font:800 26px/1.2 var(--display);letter-spacing:-.01em}
+
+/* finished */
+.rbig{font:800 54px/1 var(--display);letter-spacing:-.02em}
+.rbig small,.total small{font:600 16px/1.2 var(--body);letter-spacing:0;color:var(--muted)}
+.rline{display:flex;align-items:center;justify-content:space-between;gap:10px;color:var(--muted);font-weight:600}
+.pill{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:99px;background:var(--raised);font-size:14px;font-weight:700}
+.pill.ok,.s.ok,.preview.ok,.count.ok b{color:var(--ok)}
+.pill.short,.s.short,.preview.short,.count.short b{color:var(--bad)}
+.pill.over,.s.over,.preview.over,.count.over b{color:var(--extra)}
+
+/* the week */
+.week{display:flex;flex-direction:column;gap:12px;margin-top:8px;padding-top:18px;border-top:1px solid var(--line);touch-action:pan-y}
+.wkhead{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.wkhead h2{font:800 22px/1.15 var(--display)}
+.range{color:var(--muted);font-size:14px;margin-top:2px}
+.nav{display:flex;gap:8px}
+.nav button{width:44px;height:44px;border-radius:50%;background:var(--raised);font:700 22px/1 var(--display);
+  display:flex;align-items:center;justify-content:center;padding-bottom:3px}
+.nav button:disabled{opacity:.3}
+.total{font:800 34px/1.1 var(--display);letter-spacing:-.01em}
+.bar{display:flex;height:8px;border-radius:99px;background:var(--raised);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--acc-ink)}
+.bar i.o{background:var(--extra)}
+.counts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.count{display:flex;flex-direction:column;background:var(--surface);border-radius:16px;padding:10px 12px;min-width:0}
+.count b{font:800 24px/1.2 var(--display)}
+.count span{font-size:13px;font-weight:600}
+.count small{font-size:12px;color:var(--muted)}
+.rows{display:flex;flex-direction:column}
+.row{display:grid;grid-template-columns:72px minmax(0,1fr) auto;align-items:center;gap:10px;width:100%;min-height:58px;
+  padding:8px 2px;border-bottom:1px solid var(--line);text-align:left}
+.row:last-child{border-bottom:0}
+.row:active{background:var(--surface)}
+.row .d{font-weight:700}
+.row .d small{display:block;font-size:12px;font-weight:500;color:var(--muted)}
+.row.today .d{color:var(--acc-ink)}
+.row .h{color:var(--muted);font-size:14px}
+.row .h b{font:700 17px/1.2 var(--display);color:var(--text)}
+.row .s{font-size:14px;font-weight:700;text-align:right}
+.s.left,.s.none{color:var(--muted);font-weight:600}
+.row.future{opacity:.38}
+
+/* sheets */
+.veil{position:fixed;inset:0;z-index:10;display:none;align-items:flex-end;justify-content:center;background:rgb(0 0 0 / .62)}
+.veil.on{display:flex}
+.sheet{display:flex;flex-direction:column;gap:14px;width:100%;max-width:520px;max-height:100%;overflow:auto;
+  background:var(--surface);border-radius:26px 26px 0 0;padding:22px 18px 24px}
+.shead{text-align:center}
+.shead h2{font:800 20px/1.2 var(--display)}
+.shead p{color:var(--muted);font-size:15px;margin-top:4px}
+.sheet .stepper{background:var(--raised);border-radius:22px;padding:12px 14px}
+.sheet .rb{background:var(--surface)}
+.sheet .rb:active{background:var(--line)}
+.preview{text-align:center;font-weight:700;font-size:16px}
+.preview.left{color:var(--text)}
+.sfoot{display:flex;justify-content:space-between}
+.link{min-height:44px;padding:0 6px;font-weight:600;color:var(--muted)}
+
+/* only the timer: shown when the phone is turned, or when the timer is tapped */
+#focus{position:fixed;inset:0;z-index:5;display:none;align-items:center;justify-content:center;overflow:hidden;background:var(--bg)}
+body.focus #focus{display:flex}
+.fz{flex:none;display:flex;flex-direction:column;align-items:center;gap:8px;white-space:nowrap}
+.fdigits{font:700 min(22vw,58vh)/1 var(--display);letter-spacing:-.03em}
+.fdigits.long{font-size:min(18.5vw,58vh)}
+.fdigits.xl{font-size:min(16.5vw,58vh)}
+.fcap,.fstate,.fback{font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);min-height:18px}
+.fstate{color:var(--text)}
+.fback{display:none}
+body.focus .fback{display:block}
+@media (orientation:portrait){
+  .fz{transform:rotate(90deg)}
+  .fdigits{font-size:min(22vh,50vw)}
+  .fdigits.long{font-size:min(18.5vh,50vw)}
+  .fdigits.xl{font-size:min(16.5vh,50vw)}
+}
+@media (orientation:landscape) and (max-height:520px){
+  body.focusable:not(.sheet-open) #focus{display:flex}
+  #home{flex-direction:row}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+  .is-paused .digits,.is-paused .fdigits{opacity:.6}
+}
+</style>
+</head>
+<body>
+
+<section id="home" class="screen on" aria-label="Choose what you are working on">
+  <button class="job envin" id="job-envin" data-p="envin">
+    <span class="live" id="live-envin" hidden><i></i>Running</span>
+    <span class="jn">Envin</span>
+    <span class="jstats">
+      <span class="jcol"><span class="lbl">Today</span><span class="jv num" id="hT-envin">0m</span><span class="jd num" id="hD-envin">Not started</span></span>
+      <span class="jcol"><span class="lbl">This week</span><span class="jv num" id="hW-envin">0m</span><span class="jd num" id="hG-envin">No work yet</span></span>
+    </span>
+    <span class="jpill num" id="hP-envin" hidden><i></i><span id="hPt-envin"></span></span>
+  </button>
+  <button class="job royalty" id="job-royalty" data-p="royalty">
+    <span class="live" id="live-royalty" hidden><i></i>Running</span>
+    <span class="jn">The Royalty Family</span>
+    <span class="jstats">
+      <span class="jcol"><span class="lbl">Today</span><span class="jv num" id="hT-royalty">0m</span><span class="jd num" id="hD-royalty">Not started</span></span>
+      <span class="jcol"><span class="lbl">This week</span><span class="jv num" id="hW-royalty">0m</span><span class="jd num" id="hG-royalty">No work yet</span></span>
+    </span>
+    <span class="jpill num" id="hP-royalty" hidden><i></i><span id="hPt-royalty"></span></span>
+  </button>
+  <p class="hint" id="loadNote" hidden>Loading your hours…</p>
+</section>
+
+<section id="proj" class="screen">
+  <header class="top">
+    <button class="back" id="back">‹ Back</button>
+    <h1 id="pname"></h1>
+    <span></span>
+  </header>
+
+  <!-- not started today -->
+  <div id="setup" class="panel" hidden>
+    <p class="q">How long will you work today?</p>
+    <div class="stepper big">
+      <button class="rb" id="gMinus" aria-label="15 minutes less">−</button>
+      <output class="sv num" id="gVal">5h</output>
+      <button class="rb" id="gPlus" aria-label="15 minutes more">+</button>
+    </div>
+    <div class="chips" id="chips">
+      <button class="chip" id="chip4" data-h="4">4h</button>
+      <button class="chip" id="chip5" data-h="5">5h</button>
+      <button class="chip" id="chip6" data-h="6">6h</button>
+      <button class="chip" id="chip7" data-h="7">7h</button>
+      <button class="chip" id="chip8" data-h="8">8h</button>
+    </div>
+    <button class="play" id="go"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg><span>Start</span></button>
+  </div>
+
+  <!-- working -->
+  <div id="timer" class="hero" hidden>
+    <p class="note" id="oldNote" hidden></p>
+    <button class="ring" id="ring" aria-label="Show only the timer">
+      <svg viewBox="0 0 260 260" aria-hidden="true"><circle class="trk" cx="130" cy="130" r="118"/><circle class="arc" id="arc" cx="130" cy="130" r="118"/></svg>
+      <span class="center">
+        <span class="cap" id="cap">Time left</span>
+        <span class="digits num" id="digits">5:00:00</span>
+        <span class="state"><i></i><span id="stateTxt">Paused</span></span>
+      </span>
+    </button>
+    <div class="tiles">
+      <div class="tile"><span class="lbl">Worked</span><span class="tv num" id="tWorked">0m</span></div>
+      <div class="tile"><span class="lbl">Goal</span><span class="tv num" id="tGoal">5h</span></div>
+    </div>
+    <div class="controls">
+      <button class="play" id="toggle" aria-label="Start"></button>
+      <button class="btn" id="adjustBtn">Adjust</button>
+      <button class="btn" id="finish">Finish</button>
+    </div>
+  </div>
+
+  <!-- finished -->
+  <div id="result" class="panel" hidden>
+    <span class="lbl">Finished today</span>
+    <div class="rbig"><span class="num" id="rWorked">0m</span> <small>worked</small></div>
+    <div class="bar" id="rBar"></div>
+    <div class="rline"><span class="num" id="rGoal">Goal 5h</span><span class="pill num" id="rPill"></span></div>
+    <div class="controls">
+      <button class="btn" id="rAdjust">Adjust</button>
+      <button class="btn danger" id="rDelete">Delete</button>
+      <button class="btn wide" id="rContinue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>Keep working</button>
+    </div>
+  </div>
+
+  <section class="week" id="week" aria-label="Your week">
+    <div class="wkhead">
+      <div><h2 id="wTitle">This week</h2><div class="range num" id="wRange"></div></div>
+      <div class="nav"><button id="prevW" aria-label="Earlier week">‹</button><button id="nextW" aria-label="Later week">›</button></div>
+    </div>
+    <div class="total"><span class="num" id="wWorked">0m</span> <small class="num" id="wOf">worked</small></div>
+    <div class="bar" id="wBar"></div>
+    <div class="counts">
+      <div class="count ok"><b class="num" id="cOk">0</b><span>On time</span><small class="num" id="cOkD">&nbsp;</small></div>
+      <div class="count short"><b class="num" id="cShort">0</b><span>Unfinished</span><small class="num" id="cShortD">&nbsp;</small></div>
+      <div class="count over"><b class="num" id="cOver">0</b><span>Overtime</span><small class="num" id="cOverD">&nbsp;</small></div>
+    </div>
+    <div class="rows" id="rows"></div>
+    <p class="hint">Tap a day to fix or add hours. Swipe for other weeks.</p>
+  </section>
+</section>
+
+<div id="focus">
+  <div class="fz">
+    <span class="fcap" id="fCap">Time left</span>
+    <span class="fdigits num" id="fDigits">5:00:00</span>
+    <span class="fstate" id="fState"></span>
+    <span class="fback">Tap to go back</span>
+  </div>
+</div>
+
+<div class="veil" id="adjVeil">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="aTitle">
+    <div class="shead"><h2 id="aTitle">Adjust today</h2><p class="num" id="aSub"></p></div>
+    <div class="stepper">
+      <span class="lbl">Worked</span>
+      <button class="rb" id="aWMinus" aria-label="Less time worked">−</button>
+      <output class="sv num" id="aWorked">0m</output>
+      <button class="rb" id="aWPlus" aria-label="More time worked">+</button>
+    </div>
+    <div class="stepper">
+      <span class="lbl">Goal</span>
+      <button class="rb" id="aGMinus" aria-label="Lower goal">−</button>
+      <output class="sv num" id="aGoal">5h</output>
+      <button class="rb" id="aGPlus" aria-label="Higher goal">+</button>
+    </div>
+    <p class="preview num" id="aPreview"></p>
+    <button class="play" id="aSave">Save</button>
+    <div class="sfoot"><button class="link" id="aCancel">Cancel</button><button class="link danger" id="aDelete">Delete day</button></div>
+    <p class="hint">Hold − or + to go faster.</p>
+  </div>
+</div>
+
+<div class="veil" id="askVeil">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="qTitle">
+    <div class="shead"><h2 id="qTitle"></h2><p class="num" id="qText"></p></div>
+    <button class="play" id="qYes">OK</button>
+    <button class="btn" id="qNo">Cancel</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $=s=>document.querySelector(s);
+const PIDS=['envin','royalty'];
+const NAMES={envin:'Envin',royalty:'The Royalty Family'};
+const MIN=60000,H=60*MIN;
+const LS='focus-timer-v1';
+const SHORT_TOL=MIN;      // a day counts as unfinished from 1 minute short
+const OVER_TOL=5*MIN;     // and as overtime from 5 minutes past the goal
+const WD=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const RING=2*Math.PI*118;
+const KEY_RE=/^\d{4}-\d{2}-\d{2}$/;
+const ICON_PLAY='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>';
+const ICON_PAUSE='<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="5" height="16" rx="1.5"/><rect x="14" y="4" width="5" height="16" rx="1.5"/></svg>';
+
+/* ---------- time ---------- */
+const pad=n=>String(n).padStart(2,'0');
+function key(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+function today(){return key(new Date())}
+function fromKey(k){const a=k.split('-').map(Number);return new Date(a[0],a[1]-1,a[2])}
+function dm(d){return d.getDate()+'. '+(d.getMonth()+1)+'.'}
+function dayLabel(k){const d=fromKey(k);return WD[(d.getDay()+6)%7]+' '+dm(d)}
+function hm(ms,mode){
+  const v=Math.max(0,ms)/MIN;
+  const t=mode==='floor'?Math.floor(v+1e-6):mode==='ceil'?Math.ceil(v-1e-6):Math.round(v);
+  const h=Math.floor(t/60),m=t%60;
+  return h&&m?h+'h '+m+'m':h?h+'h':m+'m';
+}
+function hms(ms){const s=Math.floor(Math.max(0,ms)/1000);return Math.floor(s/3600)+':'+pad(Math.floor(s%3600/60))+':'+pad(s%60)}
+function status(goal,worked){
+  const x=worked-goal;
+  if(x<=-SHORT_TOL)return{st:'short',ms:-x};
+  if(x>=OVER_TOL)return{st:'over',ms:x};
+  return{st:'ok',ms:0};
+}
+function statusText(kind,ms,plain){
+  if(kind==='ok')return plain?'on time':'✓ On time';
+  if(kind==='over')return '+'+hm(ms,'floor')+' overtime';
+  if(kind==='short')return hm(ms,'ceil')+' unfinished';
+  if(kind==='left')return hm(ms,'ceil')+' left';
+  return '';
+}
+
+/* ---------- state ----------
+   p[job].days[YYYY-MM-DD] = {goal, worked, done, alerted, u}   (ms; u = last change)
+   p[job].gone[YYYY-MM-DD] = time the day was deleted
+   p[job].run  = {date, start} while the timer runs
+   p[job].hold = {k, day} keeps a timer from an earlier date on screen until it is finished */
+function blank(){
+  const p={};
+  for(const id of PIDS)p[id]={days:{},gone:{},run:null,runU:0,hold:null,lastGoal:5*H};
+  return{v:2,updated:0,p:p};
+}
+function normalize(s){
+  const out=blank();
+  if(!s||typeof s!=='object'||!s.p||typeof s.p!=='object')return out;
+  out.updated=+s.updated||0;
+  const stamp=out.updated||1;
+  for(const id of PIDS){
+    const src=s.p[id],dst=out.p[id];
+    if(!src||typeof src!=='object')continue;
+    const days=src.days||{},gone=src.gone||{};
+    for(const k in gone){if(KEY_RE.test(k)&&+gone[k]>0)dst.gone[k]=+gone[k]}
+    for(const k in days){
+      const d=days[k];
+      if(!KEY_RE.test(k)||!d||!(+d.goal>0))continue;
+      const u=+d.u||stamp;
+      if((dst.gone[k]||0)>=u)continue;
+      delete dst.gone[k];
+      dst.days[k]={goal:+d.goal,worked:Math.max(0,+d.worked||0),done:!!d.done,alerted:!!d.alerted,u:u};
+    }
+    if(+src.lastGoal>0)dst.lastGoal=+src.lastGoal;
+    dst.runU=+src.runU||stamp;
+    const open=k=>dst.days[k]&&!dst.days[k].done;
+    const r=src.run,h=src.hold;
+    if(r&&KEY_RE.test(r.date)&&+r.start>0&&open(r.date))dst.run={date:r.date,start:+r.start};
+    else if(h&&KEY_RE.test(h.k)&&KEY_RE.test(h.day)&&open(h.k))dst.hold={k:h.k,day:h.day};
+  }
+  return out;
+}
+function newer(x,y,ux,uy){
+  if(ux!==uy)return uy>ux?y:x;
+  return JSON.stringify(y)>JSON.stringify(x)?y:x;   // same moment: both sides must pick the same one
+}
+/* Joins two copies of the state (this phone and the account) without losing days from either. */
+function merge(a,b){
+  const out=blank();
+  out.updated=Math.max(a.updated,b.updated);
+  for(const id of PIDS){
+    const pa=a.p[id],pb=b.p[id],dst=out.p[id];
+    for(const k of new Set(Object.keys(pa.gone).concat(Object.keys(pb.gone))))dst.gone[k]=Math.max(pa.gone[k]||0,pb.gone[k]||0);
+    for(const k of new Set(Object.keys(pa.days).concat(Object.keys(pb.days)))){
+      const da=pa.days[k],db=pb.days[k];
+      const d=!da?db:!db?da:newer(da,db,da.u,db.u);
+      if((dst.gone[k]||0)>=d.u)continue;
+      delete dst.gone[k];
+      dst.days[k]={goal:d.goal,worked:d.worked,done:d.done,alerted:d.alerted,u:d.u};
+    }
+    const src=newer({run:pa.run,hold:pa.hold,from:pa},{run:pb.run,hold:pb.hold,from:pb},pa.runU,pb.runU).from;
+    dst.runU=src.runU;
+    const open=k=>dst.days[k]&&!dst.days[k].done;
+    if(src.run&&open(src.run.date))dst.run={date:src.run.date,start:src.run.start};
+    else if(src.hold&&open(src.hold.k))dst.hold={k:src.hold.k,day:src.hold.day};
+    dst.lastGoal=a.updated===b.updated?Math.max(pa.lastGoal,pb.lastGoal):(b.updated>a.updated?pb:pa).lastGoal;
+  }
+  // only one job runs at a time: keep the one started last, bank the other's time up to that moment
+  const e=out.p.envin,r=out.p.royalty;
+  if(e.run&&r.run){
+    const keep=e.run.start>=r.run.start?e:r,stop=keep===e?r:e,at=keep.run.start;
+    const d=stop.days[stop.run.date];
+    d.worked+=Math.max(0,at-stop.run.start);d.u=Math.max(d.u,at);
+    stop.run=null;stop.runU=Math.max(stop.runU,at);
+  }
+  return out;
+}
+function isEmpty(s){return PIDS.every(id=>!Object.keys(s.p[id].days).length)}
+
+/* ---------- saving: this phone first, then the Claude account ---------- */
+function loadLocal(){try{return normalize(JSON.parse(localStorage.getItem(LS)))}catch(e){return blank()}}
+function storeLocal(){try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){}}
+let S=loadLocal();
+let dbRef=null,remoteJson=null,writing=false,again=false,pushTimer=null,pulling=false;
+
+function save(){S.updated=Date.now();storeLocal();schedulePush()}
+function schedulePush(){if(!dbRef)return;clearTimeout(pushTimer);pushTimer=setTimeout(push,1200)}
+async function push(){
+  if(!dbRef)return;
+  if(writing){again=true;return}
+  const json=JSON.stringify(S);
+  if(json===remoteJson)return;
+  writing=true;
+  try{await dbRef.set({json:json,updated:S.updated});remoteJson=json}catch(e){}
+  writing=false;
+  if(again){again=false;push()}
+}
+async function pull(){
+  if(!dbRef||pulling)return;
+  pulling=true;
+  try{
+    const snap=await dbRef.get();
+    const raw=snap&&snap.exists?snap.data():null;
+    if(raw&&typeof raw.json==='string'){
+      remoteJson=raw.json;
+      const before=JSON.stringify(S);
+      S=merge(S,normalize(JSON.parse(raw.json)));
+      if(JSON.stringify(S)!==before){storeLocal();render()}
+    }
+    if(JSON.stringify(S)!==remoteJson)schedulePush();
+  }catch(e){}
+  pulling=false;
+}
+async function connect(){
+  try{
+    for(let i=0;i<20&&!(window.claude&&window.claude.use);i++)await new Promise(r=>setTimeout(r,100));
+    if(!(window.claude&&window.claude.use))return;
+    const got=await Promise.all([window.claude.use('db'),window.claude.use('user')]);
+    if(!got[0]||!got[1])return;
+    const id=await got[1].id();
+    if(!id)return;
+    dbRef=got[0].doc('data/users/'+id+'/state');
+    await pull();
+  }catch(e){}
+}
+
+/* ---------- reading the state ---------- */
+function sessionKey(id){
+  const p=S.p[id],t=today();
+  if(p.run)return p.run.date;
+  const h=p.hold;
+  if(h&&h.day===t&&p.days[h.k]&&!p.days[h.k].done)return h.k;
+  return t;
+}
+function workedMs(id,k){
+  const p=S.p[id],d=p.days[k];
+  if(!d)return 0;
+  return d.worked+(p.run&&p.run.date===k?Math.max(0,Date.now()-p.run.start):0);
+}
+function modeOf(id){const d=S.p[id].days[sessionKey(id)];return !d?'setup':d.done?'result':'timer'}
+function weekStart(off){const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-((d.getDay()+6)%7)+off*7);return d}
+function weekData(id,off){
+  const p=S.p[id],ws=weekStart(off),tk=today(),sk=sessionKey(id);
+  const out={start:ws,end:ws,days:[],goal:0,worked:0,ok:0,short:0,over:0,shortMs:0,overMs:0};
+  for(let i=0;i<7;i++){
+    const dt=new Date(ws);dt.setDate(ws.getDate()+i);
+    const k=key(dt),d=p.days[k];
+    const row={k:k,dt:dt,i:i,d:d||null,w:0,future:k>tk,today:k===tk,kind:'none',ms:0};
+    if(d){
+      const w=workedMs(id,k);
+      row.w=w;out.goal+=d.goal;out.worked+=w;
+      if(!d.done&&k===sk&&w<d.goal){row.kind='left';row.ms=d.goal-w}
+      else{
+        const s=status(d.goal,w);
+        row.kind=s.st;row.ms=s.ms;out[s.st]++;
+        if(s.st==='short')out.shortMs+=s.ms;
+        if(s.st==='over')out.overMs+=s.ms;
+      }
+    }
+    out.days.push(row);
+    out.end=dt;
+  }
+  return out;
+}
+
+/* ---------- changing the state ---------- */
+function pauseJob(id,at){
+  const p=S.p[id];
+  if(!p.run)return;
+  const now=at||Date.now(),d=p.days[p.run.date],t=key(new Date(now));
+  if(d){d.worked+=Math.max(0,now-p.run.start);d.u=now}
+  p.hold=d&&!d.done&&p.run.date!==t?{k:p.run.date,day:t}:null;
+  p.run=null;p.runU=now;
+}
+function startJob(id){
+  const now=Date.now();
+  for(const o of PIDS)if(o!==id)pauseJob(o,now);
+  const p=S.p[id],k=sessionKey(id),d=p.days[k];
+  if(d&&!d.done&&!p.run){p.run={date:k,start:now};p.hold=null;p.runU=now}
+  save();syncWake();
+}
+function createToday(id,goal){
+  const p=S.p[id],k=today();
+  p.days[k]={goal:goal,worked:0,done:false,alerted:false,u:Date.now()};
+  delete p.gone[k];
+  p.lastGoal=goal;p.hold=null;
+  startJob(id);
+}
+function finishJob(id){
+  const p=S.p[id],k=sessionKey(id);
+  pauseJob(id);
+  const d=p.days[k],now=Date.now();
+  if(d){d.worked=Math.round(d.worked/MIN)*MIN;d.done=true;d.u=now}
+  p.hold=null;p.runU=now;
+  save();syncWake();
+}
+function reopenToday(id){
+  const d=S.p[id].days[today()];
+  if(!d)return;
+  d.done=false;d.alerted=d.worked>=d.goal;d.u=Date.now();
+  startJob(id);
+}
+function deleteDay(id,k){
+  const p=S.p[id],now=Date.now();
+  if(p.run&&p.run.date===k){p.run=null;p.runU=now}
+  if(p.hold&&p.hold.k===k){p.hold=null;p.runU=now}
+  delete p.days[k];
+  p.gone[k]=now;
+  save();syncWake();
+}
+
+/* ---------- screen stays on, sound at zero ---------- */
+let wakeLock=null,audio=null;
+async function syncWake(){
+  const want=PIDS.some(id=>S.p[id].run)&&document.visibilityState==='visible';
+  try{
+    if(want&&!wakeLock&&navigator.wakeLock){
+      const l=await navigator.wakeLock.request('screen');
+      wakeLock=l;
+      l.addEventListener('release',()=>{if(wakeLock===l)wakeLock=null});
+    }else if(!want&&wakeLock){const l=wakeLock;wakeLock=null;await l.release()}
+  }catch(e){}
+}
+function unlockAudio(){
+  try{
+    if(!audio){const C=window.AudioContext||window.webkitAudioContext;if(!C)return;audio=new C()}
+    if(audio.state==='suspended')audio.resume();
+  }catch(e){}
+}
+/* ---------- sounds: soft, short, and each one matches what the button does ----------
+   Notes are pure tones with a quick fade in (no click) and a smooth fade out.
+   f = pitch (Hz), to = slide to this pitch, t = start delay (s), d = length (s), g = loudness. */
+const SND={
+  tap:  [{f:1050,to:780,d:.05,g:.10}],                                       // plain tap
+  up:   [{f:1480,d:.035,g:.07}],                                             // + (higher)
+  down: [{f:1180,d:.035,g:.07}],                                             // − (lower)
+  open: [{f:880,d:.06,g:.08},{f:1175,t:.045,d:.08,g:.08}],                   // opening something
+  close:[{f:1175,d:.06,g:.07},{f:880,t:.045,d:.08,g:.07}],                   // back, cancel, close
+  start:[{f:660,d:.13,g:.11},{f:990,t:.085,d:.2,g:.11}],                     // start / resume: rising
+  pause:[{f:990,d:.13,g:.10},{f:660,t:.085,d:.2,g:.10}],                     // pause: falling
+  save: [{f:784,d:.11,g:.09},{f:1175,t:.075,d:.24,g:.09}],                   // saved
+  done: [{f:1047,d:.13,g:.08},{f:1319,t:.085,d:.13,g:.08},{f:1568,t:.17,d:.38,g:.08}], // finished the day
+  del:  [{f:560,to:310,d:.2,g:.10}],                                         // deleted: sliding down
+  page: [{f:1320,d:.028,g:.05}],                                             // change week
+  goal: [{f:1047,d:.7,g:.15,bell:1},{f:1568,t:.2,d:.9,g:.13,bell:1},         // goal reached: soft bell, twice
+         {f:1047,t:1.2,d:.7,g:.15,bell:1},{f:1568,t:1.4,d:.9,g:.13,bell:1}]
+};
+function synth(ctx,dest,t0,notes){
+  for(const n of notes){
+    const t=t0+(n.t||0),a=Math.min(.006,n.d/5);
+    // main tone + a quiet overtone, so it is audible on a phone speaker at low volume
+    const parts=[[1,1,1],[n.bell?2.76:2,n.bell?.32:.16,n.bell?.45:.6]];
+    for(const [mul,lev,len] of parts){
+      const o=ctx.createOscillator(),g=ctx.createGain(),end=t+n.d*len;
+      o.type='sine';
+      o.frequency.setValueAtTime(n.f*mul,t);
+      if(n.to)o.frequency.exponentialRampToValueAtTime(n.to*mul,t+n.d*.8);
+      g.gain.setValueAtTime(0,t);
+      g.gain.linearRampToValueAtTime(n.g*lev,t+a);
+      g.gain.exponentialRampToValueAtTime(.0001,end);
+      o.connect(g);g.connect(dest);
+      o.start(t);o.stop(end+.02);
+    }
+  }
+}
+let master=null,lastSnd='',lastSndAt=0;
+function play(name){
+  if(!SND[name])return;
+  unlockAudio();
+  if(!audio)return;
+  try{
+    const now=performance.now();
+    if(name===lastSnd&&now-lastSndAt<70)return;       // never stack the same sound into a buzz
+    lastSnd=name;lastSndAt=now;
+    if(!master){
+      master=audio.createGain();
+      const lp=audio.createBiquadFilter();
+      lp.type='lowpass';lp.frequency.value=6000;
+      master.connect(lp);lp.connect(audio.destination);
+    }
+    synth(audio,master,audio.currentTime+.003,SND[name]);
+  }catch(e){}
+}
+function soundFor(b){
+  const id=b.id;
+  if(b.classList.contains('rb'))return '';                       // − and + make their own sound
+  if(b.classList.contains('job'))return 'open';
+  if(id==='toggle')return cur&&S.p[cur].run?'pause':'start';
+  if(id==='go'||id==='rContinue')return 'start';
+  if(id==='aSave')return 'save';
+  if(id==='qYes')return b.classList.contains('danger')?'del':'done';
+  if(id==='back'||id==='aCancel'||id==='qNo')return 'close';
+  if(id==='prevW'||id==='nextW')return 'page';
+  if(id==='ring'||id==='adjustBtn'||id==='rAdjust'||b.classList.contains('row'))return 'open';
+  if(b.classList.contains('chip'))return 'up';
+  return 'tap';
+}
+document.addEventListener('click',e=>{
+  const b=e.target.closest('button');
+  if(b&&!b.disabled)play(soundFor(b));
+},true);
+function flash(){
+  for(const el of [$('#timer'),$('#focus')]){el.classList.remove('flash');void el.offsetWidth;el.classList.add('flash')}
+  setTimeout(()=>{$('#timer').classList.remove('flash');$('#focus').classList.remove('flash')},3200);
+}
+function checkGoalAlerts(){
+  for(const id of PIDS){
+    const p=S.p[id];
+    if(!p.run)continue;
+    const d=p.days[p.run.date];
+    if(!d||d.alerted||workedMs(id,p.run.date)<d.goal)continue;
+    d.alerted=true;save();
+    if(document.visibilityState==='visible'){play('goal');if(id===cur)flash()}
+  }
+}
+
+/* ---------- drawing ---------- */
+let cur=null,weekOff=0,setupGoal=5*H,shown=null,weekHtml='',weekAt=0,adjust=null,askFn=null;
+let loading=isEmpty(S);
+
+function setText(el,t){t=String(t);if(el.textContent!==t)el.textContent=t}
+function setBar(el,worked,goal){
+  const base=Math.max(worked,goal)||1;
+  const a=(Math.min(worked,goal)/base*100).toFixed(1),o=(Math.max(0,worked-goal)/base*100).toFixed(1);
+  const html='<i style="width:'+a+'%"></i><i class="o" style="width:'+o+'%"></i>';
+  if(el.dataset.h!==html){el.dataset.h=html;el.innerHTML=html}
+}
+
+function render(){
+  document.body.classList.toggle('envin',cur==='envin');
+  document.body.classList.toggle('royalty',cur==='royalty');
+  $('#home').classList.toggle('on',!cur);
+  $('#proj').classList.toggle('on',!!cur);
+  if(!cur){
+    shown=null;
+    document.body.classList.remove('focusable','focus');
+    renderHome();
+    return;
+  }
+  const m=modeOf(cur);
+  shown=m;
+  setText($('#pname'),NAMES[cur]);
+  $('#setup').hidden=m!=='setup';
+  $('#timer').hidden=m!=='timer';
+  $('#result').hidden=m!=='result';
+  document.body.classList.toggle('focusable',m==='timer');
+  if(m!=='timer')document.body.classList.remove('focus');
+  if(m==='setup')renderSetup();
+  if(m==='timer')renderTimer();
+  if(m==='result')renderResult();
+  renderWeek();
+}
+
+function renderHome(){
+  $('#loadNote').hidden=!loading;
+  for(const id of PIDS){
+    const p=S.p[id],k=sessionKey(id),d=p.days[k];
+    $('#live-'+id).hidden=!p.run;
+    let big='0m',det='Not started',pill='',cls='';
+    if(d){
+      const w=workedMs(id,k),s=status(d.goal,w);
+      big=hm(w,'floor');
+      det='of '+hm(d.goal);
+      if(d.done){cls=s.st;det='of '+hm(d.goal)+' · Finished';pill=s.st==='ok'?'On time ✓':statusText(s.st,s.ms)}
+      else if(k!==today()){cls='left';pill='Still open from '+WD[(fromKey(k).getDay()+6)%7]+' · tap to finish'}
+      else if(w<d.goal){cls='left';pill=hm(d.goal-w,'ceil')+' left'+(p.run?'':' · paused')}
+      else if(s.st==='over'){cls='over';pill=statusText('over',s.ms)}
+      else{cls='ok';pill='Goal reached'}
+    }
+    setText($('#hT-'+id),big);
+    setText($('#hD-'+id),det);
+    const pe=$('#hP-'+id);
+    pe.hidden=!pill;
+    pe.className='jpill num '+cls;
+    setText($('#hPt-'+id),pill);
+    const wd=weekData(id,0);
+    setText($('#hW-'+id),hm(wd.worked,'floor'));
+    setText($('#hG-'+id),wd.goal?'of '+hm(wd.goal):'No work yet');
+  }
+}
+
+function renderSetup(){
+  setText($('#gVal'),hm(setupGoal));
+  document.querySelectorAll('#chips .chip').forEach(c=>c.classList.toggle('on',+c.dataset.h*H===setupGoal));
+}
+
+function renderTimer(){
+  const p=S.p[cur],k=sessionKey(cur),d=p.days[k];
+  if(!d)return;
+  const w=workedMs(cur,k),rem=d.goal-w,run=!!p.run,over=rem<=0,extra=over&&-rem>=OVER_TOL;
+  const txt=over?'+'+hms(-rem):hms(rem+999);
+  const cap=over?(extra?'Overtime':'Goal reached'):'Time left';
+  for(const el of [$('#timer'),$('#focus')]){
+    el.classList.toggle('is-running',run);
+    el.classList.toggle('is-paused',!run);
+    el.classList.toggle('is-over',over);
+    el.classList.toggle('is-extra',extra);
+  }
+  for(const el of [$('#digits'),$('#fDigits')]){
+    setText(el,txt);
+    el.classList.toggle('long',txt.length===8);
+    el.classList.toggle('xl',txt.length>8);
+  }
+  setText($('#cap'),cap);
+  setText($('#fCap'),cap);
+  setText($('#stateTxt'),run?'Running':'Paused');
+  setText($('#fState'),run?'':'Paused');
+  $('#arc').style.strokeDasharray=RING;
+  $('#arc').style.strokeDashoffset=over?0:RING*(1-rem/d.goal);
+  setText($('#tWorked'),hm(w,'floor'));
+  setText($('#tGoal'),hm(d.goal));
+  const tg=$('#toggle'),ic=run?'pause':'play';
+  if(tg.dataset.ic!==ic){
+    tg.dataset.ic=ic;
+    tg.innerHTML=run?ICON_PAUSE:ICON_PLAY;
+    tg.setAttribute('aria-label',run?'Pause':'Start');
+  }
+  const old=k!==today(),note=$('#oldNote');
+  note.hidden=!old;
+  if(old)setText(note,'This timer is from '+dayLabel(k)+'. If you forgot to stop it, tap Adjust to fix the time, then Finish.');
+}
+
+function renderResult(){
+  const d=S.p[cur].days[sessionKey(cur)];
+  if(!d)return;
+  const s=status(d.goal,d.worked),pill=$('#rPill');
+  setText($('#rWorked'),hm(d.worked));
+  setText($('#rGoal'),'Goal '+hm(d.goal));
+  pill.className='pill num '+s.st;
+  setText(pill,statusText(s.st,s.ms));
+  setBar($('#rBar'),d.worked,d.goal);
+}
+
+function renderWeek(){
+  if(!cur)return;
+  weekAt=Date.now();
+  const wd=weekData(cur,weekOff);
+  setText($('#wTitle'),weekOff===0?'This week':weekOff===-1?'Last week':(-weekOff)+' weeks ago');
+  setText($('#wRange'),dm(wd.start)+' – '+dm(wd.end)+' '+wd.end.getFullYear());
+  $('#nextW').disabled=weekOff>=0;
+  setText($('#wWorked'),hm(wd.worked,'floor'));
+  setText($('#wOf'),wd.goal?'worked of '+hm(wd.goal):'worked');
+  setBar($('#wBar'),wd.worked,wd.goal);
+  setText($('#cOk'),wd.ok);
+  setText($('#cShort'),wd.short);
+  setText($('#cOver'),wd.over);
+  setText($('#cShortD'),wd.shortMs?hm(wd.shortMs,'ceil')+' missing':' ');
+  setText($('#cOverD'),wd.overMs?'+'+hm(wd.overMs,'floor')+' extra':' ');
+  let html='';
+  for(const r of wd.days){
+    let mid='<span class="h">—</span>',right='<span class="s none"></span>';
+    if(r.d){
+      mid='<span class="h num"><b>'+hm(r.w,'floor')+'</b> of '+hm(r.d.goal)+'</span>';
+      right='<span class="s num '+r.kind+'">'+statusText(r.kind,r.ms)+'</span>';
+    }else if(r.today)right='<span class="s none">Not started</span>';
+    html+='<button class="row'+(r.today?' today':'')+(r.future?' future':'')+'" data-k="'+r.k+'"'+(r.future?' disabled':'')+'>'
+      +'<span class="d">'+WD[r.i]+'<small class="num">'+dm(r.dt)+'</small></span>'+mid+right+'</button>';
+  }
+  if(html!==weekHtml){weekHtml=html;$('#rows').innerHTML=html}
+}
+
+function tick(){
+  checkGoalAlerts();
+  if(!cur){renderHome();return}
+  if(modeOf(cur)!==shown){render();return}
+  if(shown==='timer')renderTimer();
+  if(adjust)renderAdjust();
+  if(Date.now()-weekAt>15000)renderWeek();
+}
+
+/* ---------- sheets ---------- */
+function openSheet(sel){$(sel).classList.add('on');document.body.classList.add('sheet-open')}
+function closeSheet(sel){
+  $(sel).classList.remove('on');
+  if(!document.querySelector('.veil.on'))document.body.classList.remove('sheet-open');
+}
+function ask(o,fn){
+  setText($('#qTitle'),o.title);
+  setText($('#qText'),o.text||'');
+  const y=$('#qYes');
+  setText(y,o.yes);
+  y.classList.toggle('danger',!!o.danger);
+  askFn=fn;
+  openSheet('#askVeil');
+}
+function closeAsk(run){
+  const fn=askFn;askFn=null;
+  closeSheet('#askVeil');
+  if(run&&fn)fn();
+}
+
+/* adjust: works while the timer runs. Worked stays untouched unless − or + was used on it. */
+function openAdjust(id,k){
+  const p=S.p[id],d=p.days[k],t=today(),isNew=!d;
+  adjust={id:id,k:k,goal:d?d.goal:p.lastGoal,worked:isNew?(k<t?p.lastGoal:0):null,at:0};
+  setText($('#aTitle'),isNew?'Add hours':k===t?'Adjust today':'Adjust this day');
+  setText($('#aSub'),dayLabel(k)+' · '+NAMES[id]);
+  $('#aDelete').hidden=isNew;
+  renderAdjust();
+  openSheet('#adjVeil');
+}
+function closeAdjust(){adjust=null;closeSheet('#adjVeil')}
+function adjWorked(){return adjust.worked!==null?adjust.worked:workedMs(adjust.id,adjust.k)}
+function adjIsOpen(){
+  const d=S.p[adjust.id].days[adjust.k];
+  return d?(!d.done&&adjust.k===sessionKey(adjust.id)):adjust.k===today();
+}
+function snap(minutes,dir,step,mult){
+  let n=dir<0?Math.floor(minutes/step)*step:Math.ceil(minutes/step)*step;
+  if(n===minutes)n+=dir*step;
+  return n+dir*step*((mult||1)-1);
+}
+function stepWorked(dir,mult){
+  if(!adjust)return;
+  const m=Math.floor(adjWorked()/MIN+1e-6);
+  adjust.worked=Math.max(0,Math.min(24*60,snap(m,dir,5,mult)))*MIN;
+  adjust.at=Date.now();
+  renderAdjust();
+}
+function stepGoal(dir){
+  if(!adjust)return;
+  adjust.goal=Math.max(15,Math.min(16*60,snap(Math.round(adjust.goal/MIN),dir,15)))*MIN;
+  renderAdjust();
+}
+function stepSetup(dir){
+  setupGoal=Math.max(15,Math.min(16*60,snap(Math.round(setupGoal/MIN),dir,15)))*MIN;
+  renderSetup();
+}
+function renderAdjust(){
+  const a=adjust,w=adjWorked(),left=a.goal-w;
+  setText($('#aWorked'),hm(w,'floor'));
+  setText($('#aGoal'),hm(a.goal));
+  let txt,cls;
+  if(adjIsOpen()){
+    if(left>0){txt=hm(left,'ceil')+' left';cls='left'}
+    else if(-left>=OVER_TOL){txt=statusText('over',-left);cls='over'}
+    else{txt='Goal reached';cls='ok'}
+  }else{
+    const s=status(a.goal,w);
+    txt=statusText(s.st,s.ms);cls=s.st;
+  }
+  const pv=$('#aPreview');
+  pv.className='preview num '+cls;
+  setText(pv,txt);
+}
+function saveAdjust(){
+  const a=adjust;
+  if(!a)return;
+  const p=S.p[a.id],now=Date.now();
+  let d=p.days[a.k];
+  if(!d){
+    d=p.days[a.k]={goal:a.goal,worked:0,done:a.k<today(),alerted:false,u:now};
+    delete p.gone[a.k];
+  }
+  d.goal=a.goal;
+  if(a.worked!==null){
+    d.worked=a.worked;
+    if(p.run&&p.run.date===a.k){p.run.start=a.at||now;p.runU=now}
+  }
+  d.alerted=workedMs(a.id,a.k)>=d.goal;
+  d.u=now;
+  if(a.k===sessionKey(a.id))p.lastGoal=a.goal;
+  closeAdjust();
+  save();
+  render();
+}
+
+/* − and + repeat while held, and speed up */
+function holdable(btn,fn,snd){
+  let timer=null,n=0;
+  const stop=()=>{clearTimeout(timer);timer=null};
+  const loop=()=>{
+    if(!btn.offsetParent){stop();return}
+    n++;fn(n>24?3:1);
+    if(n<=8||n%3===0)play(snd);
+    timer=setTimeout(loop,n>8?60:120);
+  };
+  btn.addEventListener('pointerdown',e=>{
+    if(e.button)return;
+    stop();n=0;fn(1);play(snd);
+    timer=setTimeout(loop,450);
+  });
+  for(const ev of ['pointerup','pointerleave','pointercancel'])btn.addEventListener(ev,stop);
+  window.addEventListener('blur',stop);
+  btn.addEventListener('contextmenu',e=>e.preventDefault());
+  btn.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&!e.repeat){e.preventDefault();fn(1);play(snd)}});
+}
+
+/* ---------- buttons ---------- */
+function openJob(id){cur=id;weekOff=0;weekHtml='';setupGoal=S.p[id].lastGoal;render();window.scrollTo(0,0)}
+function goHome(){cur=null;render();window.scrollTo(0,0)}
+function shiftWeek(n){const v=Math.min(0,weekOff+n);if(v!==weekOff){weekOff=v;renderWeek()}}
+
+document.querySelectorAll('.job').forEach(b=>b.addEventListener('click',()=>openJob(b.dataset.p)));
+$('#back').addEventListener('click',goHome);
+
+holdable($('#gMinus'),()=>stepSetup(-1),'down');
+holdable($('#gPlus'),()=>stepSetup(1),'up');
+document.querySelectorAll('#chips .chip').forEach(c=>c.addEventListener('click',()=>{setupGoal=+c.dataset.h*H;renderSetup()}));
+$('#go').addEventListener('click',()=>{unlockAudio();createToday(cur,setupGoal);render()});
+
+$('#toggle').addEventListener('click',()=>{
+  if(S.p[cur].run){pauseJob(cur);save();syncWake()}
+  else{unlockAudio();startJob(cur)}
+  render();
+});
+$('#adjustBtn').addEventListener('click',()=>openAdjust(cur,sessionKey(cur)));
+$('#finish').addEventListener('click',()=>{
+  const id=cur,k=sessionKey(id),d=S.p[id].days[k];
+  if(!d)return;
+  ask({title:k===today()?'Finish today?':'Finish '+dayLabel(k)+'?',
+       text:'You worked '+hm(workedMs(id,k),'floor')+' of '+hm(d.goal)+'.',yes:'Finish'},
+      ()=>{finishJob(id);render();window.scrollTo(0,0)});
+});
+$('#ring').addEventListener('click',()=>document.body.classList.add('focus'));
+$('#focus').addEventListener('click',()=>{if(document.body.classList.contains('focus'))play('close');document.body.classList.remove('focus')});
+
+$('#rAdjust').addEventListener('click',()=>openAdjust(cur,sessionKey(cur)));
+$('#rDelete').addEventListener('click',()=>{
+  const id=cur,k=sessionKey(id);
+  ask({title:'Delete today?',text:'This removes the hours saved for '+NAMES[id]+' today.',yes:'Delete',danger:true},
+      ()=>{deleteDay(id,k);render()});
+});
+$('#rContinue').addEventListener('click',()=>{unlockAudio();reopenToday(cur);render()});
+
+$('#prevW').addEventListener('click',()=>shiftWeek(-1));
+$('#nextW').addEventListener('click',()=>shiftWeek(1));
+$('#rows').addEventListener('click',e=>{
+  const b=e.target.closest('.row');
+  if(b&&!b.disabled&&cur)openAdjust(cur,b.dataset.k);
+});
+(function(){
+  const el=$('#week');
+  let x0=0,y0=0;
+  el.addEventListener('touchstart',e=>{x0=e.touches[0].clientX;y0=e.touches[0].clientY},{passive:true});
+  el.addEventListener('touchend',e=>{
+    const dx=e.changedTouches[0].clientX-x0,dy=e.changedTouches[0].clientY-y0;
+    if(Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.5){const w=weekOff;shiftWeek(dx<0?1:-1);if(weekOff!==w)play('page')}
+  },{passive:true});
+})();
+
+holdable($('#aWMinus'),m=>stepWorked(-1,m),'down');
+holdable($('#aWPlus'),m=>stepWorked(1,m),'up');
+holdable($('#aGMinus'),()=>stepGoal(-1),'down');
+holdable($('#aGPlus'),()=>stepGoal(1),'up');
+$('#aSave').addEventListener('click',saveAdjust);
+$('#aCancel').addEventListener('click',closeAdjust);
+$('#aDelete').addEventListener('click',()=>{
+  const a=adjust;
+  if(!a)return;
+  closeAdjust();
+  ask({title:'Delete '+(a.k===today()?'today':dayLabel(a.k))+'?',
+       text:'This removes the hours saved for '+NAMES[a.id]+' on that day.',yes:'Delete',danger:true},
+      ()=>{deleteDay(a.id,a.k);render()});
+});
+$('#adjVeil').addEventListener('click',e=>{if(e.target.id==='adjVeil'){play('close');closeAdjust()}});
+$('#qYes').addEventListener('click',()=>closeAsk(true));
+$('#qNo').addEventListener('click',()=>closeAsk(false));
+$('#askVeil').addEventListener('click',e=>{if(e.target.id==='askVeil'){play('close');closeAsk(false)}});
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape')return;
+  if(askFn)closeAsk(false);else if(adjust)closeAdjust();else document.body.classList.remove('focus');
+});
+
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'){syncWake();pull();tick()}
+  else{clearTimeout(pushTimer);push()}
+});
+window.addEventListener('pagehide',()=>{clearTimeout(pushTimer);push()});
+
+/* ---------- start ---------- */
+function endLoading(){
+  if(!loading)return;
+  loading=false;
+  document.body.classList.remove('loading');
+  if(!cur){const r=PIDS.find(id=>S.p[id].run);if(r){openJob(r);return}}
+  render();
+}
+function restore(data){
+  if(data&&PIDS.includes(data.cur)){cur=data.cur;weekOff=Math.min(0,data.weekOff|0);setupGoal=S.p[cur].lastGoal;weekHtml='';render()}
+}
+(function(){
+  const r=PIDS.find(id=>S.p[id].run);
+  if(r){cur=r;setupGoal=S.p[r].lastGoal}          // a timer is running: open it straight away
+  if(loading){document.body.classList.add('loading');setTimeout(endLoading,4000)}
+  render();
+  syncWake();
+  setInterval(tick,250);
+  connect().then(endLoading,endLoading);
+  try{
+    const hot=window.claude&&window.claude.hot;
+    if(hot){
+      if(typeof hot.snapshot==='function')hot.snapshot(()=>({cur:cur,weekOff:weekOff}));
+      if(typeof hot.ready==='function')hot.ready(restore);else restore(hot.data);
+    }
+  }catch(e){}
+})();
+</script>
+</body>
+</html>
